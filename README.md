@@ -35,7 +35,7 @@ docker compose exec -T backend python -m scripts.seed_demo
 
 ## 数据和模型口径
 
-五个核心实体：WindowDataset、SensorWindow、TrainingRun、ThresholdPolicy、InspectionReview，分别经过数据库模型、Pydantic schema、service、route/API、store与页面。六个页面为判别席、窗口样本、训练配置、封存结果、阈值与复核、研究留痕。PerformanceSummary、CurvePlot、RunTable等业务组件跨页复用；同时有共享表格、Badge、Notice、Empty。
+五个核心实体：WindowDataset、SensorWindow、TrainingRun、ThresholdPolicy、InspectionReview，另有复测实体RetestRun，分别经过数据库模型、Pydantic schema、service、route/API、store与页面。六个页面为判别席、窗口样本、训练配置、封存结果、阈值与复核、研究留痕。PerformanceSummary、CurvePlot、RunTable等业务组件跨页复用；同时有共享表格、Badge、Notice、Empty。
 
 允许六特征：night_flow（夜间流量L/s）、pressure_drop（有符号压力降kPa）、acoustic_energy（声学能量）、flow_variation（流量变异）、pipe_age（管龄年）、ambient_temp（环境温度°C）。label单独为0/1，API拒绝任何额外/缺失特征及把label作为入模特征。导入接受JSON窗口数组，100–5000行，每类至少20；reference批内唯一。没有CSV解析器，源文件名用于演示台账。
 
@@ -48,6 +48,8 @@ docker compose exec -T backend python -m scripts.seed_demo
 输入指纹为全量窗口id/reference/全部六特征/label、完整训练候选和成本、算法版本与split seed的稳定排序SHA-256，包含未被胜出模型选用的特征，防止遗漏影响字段。结果保留标准化均值/尺度、系数/截距、CV逐折AUC、分割ID、验证成本候选和最终留出得分，可复算。worker将JSON写入共享artifacts卷并落库。
 
 失败态：太少窗口/单类/任一类不足20/常量训练特征/非有限数值/未知特征/非法C和成本明确拒绝或记为failed；运行配额为最多3组特征×5个C。合成窗口假设独立可交换，没有按真实管段或时间分组的外部验证，也没有未来现场泛化承诺。每个运行只最终评估所选模型一次；若人为基于已经看到的留出结果反复改方案，会破坏留出意义，应另建新的外部数据集验证。
+
+复测（RetestRun）：封存结果页可对已封存研究选另一数据集发起外部复测。`services/retest_apply.py` 只读取原研究封存的标准化均值/尺度、系数/截距、验证阈值与漏报误报成本，对外部窗口整批打分判别——不拟合、不CV、不重选阈值。结果保留逐窗判别、汇总指标（ROC/PR、AUC、AP、混淆矩阵与固定成本）和复测输入指纹（外部窗口+封存参数+原研究指纹的SHA-256）。复测数据任一窗口reference与原研究任一分割（train/validation/test，按split_ids核对）重名，整次复测以409拒绝，旧样本不得冒充外部验证。`(run_id,dataset_id)`为自然键唯一：同一请求重复提交返回已有任务不新增结果；失败任务可经 `/retests/{id}/retry` 重入队，已完成的复测不可重跑、不可修改，原研究同样保持原样。封存参数不全（缺标准化/系数/阈值/成本/分割索引）的旧研究明确以422拒绝，系统不补训、不补参数。复测走同一Celery队列，worker将 `retest-{id}.json` 写入artifacts卷并落库。
 
 ## 技术与开发
 

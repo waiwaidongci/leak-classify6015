@@ -1,0 +1,1 @@
+import {request,post} from './client';import type {Retest} from '../types/domain';export const retestApi={forRun:(runId:number)=>request<Retest[]>('/runs/'+runId+'/retests'),create:(runId:number,dataset_id:number)=>post('/runs/'+runId+'/retests',{dataset_id}),retry:(id:number)=>post('/retests/'+id+'/retry',{})};
